@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fang Intel – v4</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;font-family:system-ui,"Noto Sans Thai",sans-serif;background:#0b0f19;color:#e5e7eb;font-size:13px}
+#app{display:flex;height:100%}
+#side{width:300px;background:#111827;border-right:1px solid #374151;overflow-y:auto;padding:10px;flex-shrink:0}
+#map{flex:1}
+h1{font-size:15px;margin:0 0 8px;color:#10b981}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#10b981;margin:14px 0 6px}
+label{display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer}
+button,.btn{background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:5px;padding:6px 8px;cursor:pointer;font-size:12px}
+button:hover,.btn:hover{background:#374151}
+button.on{border-color:#10b981;color:#10b981}
+.row{display:flex;flex-wrap:wrap;gap:5px}
+#list div{display:flex;justify-content:space-between;align-items:center;padding:4px 6px;margin:3px 0;background:#1f2937;border-radius:4px}
+#list span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#list button{padding:1px 6px}
+#ev-list>div{padding:4px 6px;margin:3px 0;background:#1f2937;border-radius:4px;font-size:12px}
+#ipb-ov{position:fixed;inset:0;background:#0b0f19;z-index:50;overflow:auto;padding:20px 8%;display:none}
+#ipb-ov h1{color:#10b981;font-size:20px}#ipb-ov h2{font-size:14px;color:#10b981;border-bottom:1px solid #374151;padding-bottom:3px;margin-top:20px;text-transform:none}
+#ipb-ov textarea{width:100%;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px;padding:6px;font:inherit;resize:none;overflow:hidden}
+.ipb-bar{display:flex;gap:6px;position:sticky;top:0;background:#0b0f19;padding:6px 0}
+.ipb-warn{background:#451a03;border:1px solid #b45309;color:#fcd34d;padding:6px 10px;border-radius:5px;margin:8px 0}
+.ipb-l{font-weight:600;margin:8px 0 2px}.ipb-b{margin-left:8px;font-size:11px;font-weight:400;background:#374151;border-radius:3px;padding:1px 6px;color:#d1d5db}
+.ipb-r{font-size:12px;color:#9ca3af;margin:2px 0}.ipb-coa{border:1px solid #374151;border-radius:6px;padding:6px 10px;margin:8px 0}.ipb-stats div{margin:3px 0;color:#d1d5db}
+@media print{body>*:not(#ipb-ov){display:none!important}#ipb-ov{position:static;background:#fff;color:#000;padding:0;display:block!important}
+#ipb-ov textarea{background:none;color:#000;border:none;padding:0}#ipb-ov h1,#ipb-ov h2{color:#000}.noprint{display:none!important}.ipb-b,.ipb-r,.ipb-stats div{color:#333;background:none}.ipb-warn{background:none;color:#000;border:1px solid #000}.ipb-coa{border-color:#999}}
+#status{position:absolute;bottom:6px;left:310px;background:#0b0f19cc;padding:3px 8px;border-radius:4px;font-family:monospace;font-size:11px;z-index:2}
+input[type=file]{display:none}
+@media(max-width:700px){#app{flex-direction:column-reverse}#side{width:100%;height:42%}#status{left:6px;bottom:44%}}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="side">
+<h1>แผนที่วิเคราะห์ภูมิประเทศ อ.ฝาง</h1>
+
+<h2>แผนที่พื้นหลัง</h2>
+<label><input type="radio" name="bm" value="topo" checked> Topo (OpenTopoMap)</label>
+<label><input type="radio" name="bm" value="sat"> ดาวเทียม (Esri)</label>
+<label><input type="radio" name="bm" value="osm"> ถนน (OSM)</label>
+
+<h2>ภูมิประเทศ</h2>
+<label><input type="checkbox" id="hill" checked> เงาภูเขา (Hillshade)</label>
+<label><input type="checkbox" id="t3d"> มุมมอง 3 มิติ</label>
+<div class="row" style="margin-top:4px"><button id="btn-flat">มองจากบน</button><button id="btn-fang">กลับ อ.ฝาง</button></div>
+
+<h2>เส้นทางลาดตระเวน / ไฟล์</h2>
+<div class="row">
+<label class="btn" for="file">นำเข้า GeoJSON / KML / GPX</label>
+<input type="file" id="file" accept=".geojson,.json,.kml,.gpx" multiple>
+<button id="btn-export">ส่งออก GeoJSON</button>
+</div>
+
+<h2>วาดพื้นที่</h2>
+<div class="row">
+<button data-k="AO">AO</button><button data-k="NAI">NAI</button><button data-k="TAI">TAI</button>
+<button id="btn-finish">จบการวาด</button><button id="btn-cancel">ยกเลิก</button>
+</div>
+<div id="hint" style="color:#9ca3af;margin-top:4px">เลือกชนิดแล้วคลิกบนแผนที่เป็นมุม ดับเบิลคลิกเพื่อจบ</div>
+
+<h2>บัญชีและโปรเจกต์ (Supabase)</h2>
+<div id="cl-state" style="color:#9ca3af;margin-bottom:4px">กำลังตรวจสอบ...</div>
+<div id="cl-login-box">
+<input id="cl-email" type="email" placeholder="อีเมล" autocomplete="username" style="width:100%;margin:2px 0;padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px">
+<input id="cl-pass" type="password" placeholder="รหัสผ่าน" autocomplete="current-password" style="width:100%;margin:2px 0;padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px">
+<button id="cl-login">เข้าสู่ระบบ</button>
+</div>
+<div id="cl-work">
+<select id="cl-proj" style="width:100%;padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px"></select>
+<div class="row" style="margin-top:4px"><button id="cl-save">บันทึกขึ้นฐานข้อมูล</button><button id="cl-load">โหลดจากฐานข้อมูล</button><button id="cl-logout">ออกจากระบบ</button></div>
+<div class="row" style="margin-top:4px"><input id="cl-newname" placeholder="ชื่อโปรเจกต์ใหม่" style="flex:1;padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px"><button id="cl-new">สร้าง</button></div>
+</div>
+
+<h2>เหตุการณ์จากข่าว PDF</h2>
+<div id="ev-state" style="color:#9ca3af;margin-bottom:4px"></div>
+<label style="align-items:flex-start"><input type="checkbox" id="ev-ok" style="margin-top:3px"> <span>ยืนยันว่าเอกสารไม่มีชั้นความลับ และยอมรับว่าข้อความจะถูกส่งไปประมวลผลกับบริการ LLM บนคลาวด์</span></label>
+<div class="row" style="margin-top:4px">
+<label class="btn" for="ev-file">อัปโหลด PDF</label><input type="file" id="ev-file" accept="application/pdf">
+<select id="ev-filter" style="padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px"><option value="">ทั้งหมด</option><option value="pending">รอตรวจ</option><option value="approved">อนุมัติแล้ว</option><option value="rejected">ปฏิเสธ</option></select>
+<button id="ev-reload">โหลดเหตุการณ์</button>
+</div>
+<label><input type="checkbox" id="ev-heat"> Heatmap (เฉพาะที่อนุมัติ)</label>
+<div id="ev-list" style="max-height:260px;overflow-y:auto;margin-top:4px"></div>
+
+<h2>ร่างรายงาน IPB</h2>
+<div id="ipb-state" style="color:#9ca3af;margin-bottom:4px"></div>
+<textarea id="ipb-terrain" rows="3" placeholder="ภูมิประเทศที่ผู้วิเคราะห์ทราบ (ที่กำบัง สิ่งกีดขวาง พื้นที่สำคัญ เส้นทางเข้าถึง) – ถ้าไม่กรอก ระบบจะระบุว่าไม่มีข้อมูล" style="width:100%;padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px;font:inherit"></textarea>
+<input id="ipb-weather" placeholder="สภาพอากาศ/ฤดูกาล" style="width:100%;margin:3px 0;padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px">
+<input id="ipb-civil" placeholder="ปัจจัยพลเรือน (ชุมชน ถนน ฯลฯ)" style="width:100%;margin-bottom:4px;padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px">
+<button id="ipb-gen">สร้างร่าง IPB</button>
+<div class="row" style="margin-top:4px"><select id="ipb-list" style="flex:1;padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px"></select><button id="ipb-open">เปิด</button></div>
+
+<h2>วัตถุบนแผนที่ (<span id="cnt">0</span>)</h2>
+<div id="list"></div>
+<button id="btn-clear" style="margin-top:6px">ล้างทั้งหมด</button>
+</div>
+<div id="map"></div>
+<div id="status">คลิกแผนที่เพื่อดูพิกัด</div>
+</div>
+
+<script>
+const FANG=[99.21,19.92];
+const colors={AO:'#eab308',NAI:'#3b82f6',TAI:'#ef4444',ROUTE:'#f97316',IMPORT:'#a78bfa'};
+let feats=[],drawKind=null,pts=[];
+
+const map=new maplibregl.Map({
+  container:'map',center:FANG,zoom:11,maxPitch:80,
+  style:{version:8,
+    sources:{
+      topo:{type:'raster',tiles:['https://tile.opentopomap.org/{z}/{x}/{y}.png'],tileSize:256,maxzoom:17,attribution:'© OpenTopoMap, OSM'},
+      sat:{type:'raster',tiles:['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],tileSize:256,maxzoom:18,attribution:'Esri, Maxar'},
+      osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,maxzoom:19,attribution:'© OpenStreetMap'},
+      dem:{type:'raster-dem',tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],encoding:'terrarium',tileSize:256,maxzoom:14,attribution:'Mapzen/AWS Terrain Tiles'}
+    },
+    layers:[
+      {id:'topo',type:'raster',source:'topo'},
+      {id:'sat',type:'raster',source:'sat',layout:{visibility:'none'}},
+      {id:'osm',type:'raster',source:'osm',layout:{visibility:'none'}},
+      {id:'hill',type:'hillshade',source:'dem',paint:{'hillshade-exaggeration':.5}}
+    ]}
+});
+map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),'top-right');
+map.addControl(new maplibregl.ScaleControl({unit:'metric'}));
+
+map.on('load',()=>{
+  map.addSource('user',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+  map.addSource('draft',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+  const c=['match',['get','kind'],'AO',colors.AO,'NAI',colors.NAI,'TAI',colors.TAI,'ROUTE',colors.ROUTE,colors.IMPORT];
+  map.addLayer({id:'u-fill',type:'fill',source:'user',filter:['==',['geometry-type'],'Polygon'],paint:{'fill-color':c,'fill-opacity':.2}});
+  map.addLayer({id:'u-line',type:'line',source:'user',filter:['!=',['geometry-type'],'Point'],paint:{'line-color':c,'line-width':3}});
+  map.addLayer({id:'u-pt',type:'circle',source:'user',filter:['==',['geometry-type'],'Point'],paint:{'circle-color':c,'circle-radius':6,'circle-stroke-color':'#fff','circle-stroke-width':1.5}});
+  map.addLayer({id:'u-lbl',type:'symbol',source:'user',layout:{'text-field':['get','name'],'text-size':11,'text-offset':[0,1.2],'text-font':['Open Sans Regular']},paint:{'text-color':'#fff','text-halo-color':'#000','text-halo-width':1.5}});
+  map.addLayer({id:'d-line',type:'line',source:'draft',paint:{'line-color':'#fff','line-width':2,'line-dasharray':[2,2]}});
+  map.addLayer({id:'d-pt',type:'circle',source:'draft',filter:['==',['geometry-type'],'Point'],paint:{'circle-color':'#fff','circle-radius':4}});
+});
+
+// basemap + terrain controls
+document.querySelectorAll('input[name=bm]').forEach(r=>r.onchange=()=>{
+  ['topo','sat','osm'].forEach(id=>map.setLayoutProperty(id,'visibility',id===r.value?'visible':'none'));
+});
+document.getElementById('hill').onchange=e=>map.setLayoutProperty('hill','visibility',e.target.checked?'visible':'none');
+document.getElementById('t3d').onchange=e=>{
+  if(e.target.checked){map.setTerrain({source:'dem',exaggeration:1.4});map.easeTo({pitch:65,duration:900});}
+  else{map.setTerrain(null);map.easeTo({pitch:0,bearing:0,duration:600});}
+};
+document.getElementById('btn-flat').onclick=()=>map.easeTo({pitch:0,bearing:0});
+document.getElementById('btn-fang').onclick=()=>map.flyTo({center:FANG,zoom:11});
+
+// coordinates + elevation
+map.on('mousemove',e=>{
+  const el=map.getTerrain()?map.queryTerrainElevation(e.lngLat):null;
+  document.getElementById('status').textContent=
+    e.lngLat.lat.toFixed(5)+'° N, '+e.lngLat.lng.toFixed(5)+'° E'+(el!=null?'  |  สูง '+Math.round(el)+' ม.':'');
+});
+
+// ---------- data handling ----------
+function refresh(){
+  map.getSource('user').setData({type:'FeatureCollection',features:feats});
+  document.getElementById('cnt').textContent=feats.length;
+  const L=document.getElementById('list');L.innerHTML='';
+  feats.forEach(f=>{
+    const d=document.createElement('div');
+    const s=document.createElement('span');s.textContent='['+f.properties.kind+'] '+f.properties.name;
+    s.style.cursor='pointer';s.onclick=()=>zoomTo([f]);
+    const b=document.createElement('button');b.textContent='×';
+    b.onclick=()=>{feats=feats.filter(x=>x!==f);refresh();};
+    d.append(s,b);L.append(d);
+  });
+}
+function zoomTo(fs){
+  const bb=new maplibregl.LngLatBounds();
+  const walk=c=>typeof c[0]==='number'?bb.extend(c):c.forEach(walk);
+  fs.forEach(f=>walk(f.geometry.coordinates));
+  if(!bb.isEmpty())map.fitBounds(bb,{padding:60,maxZoom:15});
+}
+function xmlToGeo(txt,ext){
+  const doc=new DOMParser().parseFromString(txt,'text/xml'),out=[];
+  const num=s=>s.trim().split(/\s+/).map(p=>p.split(',').slice(0,2).map(Number)).filter(p=>p.length===2&&!isNaN(p[0]));
+  if(ext==='kml'){
+    doc.querySelectorAll('Placemark').forEach(pm=>{
+      const name=(pm.querySelector('name')||{}).textContent||'KML';
+      const add=(g,tag)=>pm.querySelectorAll(tag+' > coordinates, '+tag+' coordinates').forEach(n=>{
+        const c=num(n.textContent);if(!c.length)return;
+        out.push({type:'Feature',properties:{name},geometry:g(c)});
+      });
+      const seen=new Set();
+      pm.querySelectorAll('Point coordinates').forEach(n=>{const c=num(n.textContent);if(c.length)out.push({type:'Feature',properties:{name},geometry:{type:'Point',coordinates:c[0]}});});
+      pm.querySelectorAll('LineString coordinates').forEach(n=>{const c=num(n.textContent);if(c.length>1)out.push({type:'Feature',properties:{name},geometry:{type:'LineString',coordinates:c}});});
+      pm.querySelectorAll('Polygon outerBoundaryIs coordinates').forEach(n=>{const c=num(n.textContent);if(c.length>2)out.push({type:'Feature',properties:{name},geometry:{type:'Polygon',coordinates:[c]}});});
+    });
+  }else{
+    const pt=n=>[+n.getAttribute('lon'),+n.getAttribute('lat')];
+    doc.querySelectorAll('trk').forEach(t=>{
+      const name=(t.querySelector('name')||{}).textContent||'GPX track';
+      t.querySelectorAll('trkseg').forEach(sg=>{const c=[...sg.querySelectorAll('trkpt')].map(pt);if(c.length>1)out.push({type:'Feature',properties:{name},geometry:{type:'LineString',coordinates:c}});});
+    });
+    doc.querySelectorAll('rte').forEach(t=>{
+      const name=(t.querySelector('name')||{}).textContent||'GPX route';
+      const c=[...t.querySelectorAll('rtept')].map(pt);if(c.length>1)out.push({type:'Feature',properties:{name},geometry:{type:'LineString',coordinates:c}});
+    });
+    doc.querySelectorAll('wpt').forEach(w=>out.push({type:'Feature',properties:{name:(w.querySelector('name')||{}).textContent||'waypoint'},geometry:{type:'Point',coordinates:pt(w)}}));
+  }
+  return out;
+}
+document.getElementById('file').onchange=async e=>{
+  const added=[];
+  for(const f of e.target.files){
+    const ext=f.name.split('.').pop().toLowerCase(),txt=await f.text();let fs=[];
+    try{
+      if(ext==='kml'||ext==='gpx')fs=xmlToGeo(txt,ext);
+      else{const g=JSON.parse(txt);fs=g.type==='FeatureCollection'?g.features:g.type==='Feature'?[g]:[{type:'Feature',properties:{},geometry:g}];}
+    }catch(err){alert('อ่านไฟล์ไม่ได้: '+f.name);continue;}
+    fs.forEach(x=>{
+      x.properties=x.properties||{};
+      x.properties.name=x.properties.name||f.name;
+      x.properties.kind=x.properties.kind||(x.geometry.type==='LineString'||x.geometry.type==='MultiLineString'?'ROUTE':'IMPORT');
+      added.push(x);
+    });
+  }
+  feats.push(...added);refresh();zoomTo(added);e.target.value='';
+};
+document.getElementById('btn-export').onclick=()=>{
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify({type:'FeatureCollection',features:feats},null,2)],{type:'application/geo+json'}));
+  a.download='fang-plan.geojson';a.click();
+};
+document.getElementById('btn-clear').onclick=()=>{if(confirm('ล้างทั้งหมด?')){feats=[];refresh();}};
+
+// ---------- polygon drawing ----------
+function setDraw(k){
+  drawKind=k;pts=[];drawDraft();
+  document.querySelectorAll('[data-k]').forEach(b=>b.classList.toggle('on',b.dataset.k===k));
+  map.getCanvas().style.cursor=k?'crosshair':'';
+  k?map.doubleClickZoom.disable():map.doubleClickZoom.enable();
+}
+document.querySelectorAll('[data-k]').forEach(b=>b.onclick=()=>setDraw(b.dataset.k));
+document.getElementById('btn-cancel').onclick=()=>setDraw(null);
+document.getElementById('btn-finish').onclick=finish;
+function drawDraft(){
+  const f=[];
+  pts.forEach(p=>f.push({type:'Feature',properties:{},geometry:{type:'Point',coordinates:p}}));
+  if(pts.length>1)f.push({type:'Feature',properties:{},geometry:{type:'LineString',coordinates:pts}});
+  map.getSource('draft')&&map.getSource('draft').setData({type:'FeatureCollection',features:f});
+}
+function finish(){
+  if(drawKind&&pts.length>=3){
+    const n=feats.filter(f=>f.properties.kind===drawKind).length+1;
+    feats.push({type:'Feature',properties:{kind:drawKind,name:drawKind+' #'+n},geometry:{type:'Polygon',coordinates:[[...pts,pts[0]]]}});
+    refresh();
+  }
+  setDraw(null);
+}
+map.on('click',e=>{if(drawKind){pts.push([e.lngLat.lng,e.lngLat.lat]);drawDraft();}});
+map.on('dblclick',e=>{if(drawKind){e.preventDefault();finish();}});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="js/config.js"></script>
+<script src="js/cloud.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="js/events.js"></script>
+<script src="js/ipb.js"></script>
+</body>
+</html>
