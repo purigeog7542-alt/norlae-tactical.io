@@ -3,9 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fang Intel – v4</title>
+<title>Fang Intel – v5</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<!-- เพิ่มไลบรารีแปลงพิกัด MGRS และ UTM (Proj4) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mgrs@2.0.0/dist/mgrs.min.js"></script>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;font-family:system-ui,"Noto Sans Thai",sans-serif;background:#0b0f19;color:#e5e7eb;font-size:13px}
@@ -41,6 +44,13 @@ input[type=file]{display:none}
 <div id="app">
 <div id="side">
 <h1>แผนที่วิเคราะห์ภูมิประเทศ อ.ฝาง</h1>
+
+<h2>รูปแบบการแสดงพิกัด</h2>
+<select id="coord-format" style="width:100%;padding:5px;background:#1f2937;color:#e5e7eb;border:1px solid #374151;border-radius:4px;margin-bottom:6px">
+  <option value="latlon" selected>WGS84 (Lat / Long)</option>
+  <option value="mgrs">MGRS</option>
+  <option value="utm">UTM (Zone 47N)</option>
+</select>
 
 <h2>แผนที่พื้นหลัง</h2>
 <label><input type="radio" name="bm" value="topo" checked> Topo (OpenTopoMap)</label>
@@ -110,6 +120,7 @@ input[type=file]{display:none}
 const FANG=[99.21,19.92];
 const colors={AO:'#eab308',NAI:'#3b82f6',TAI:'#ef4444',ROUTE:'#f97316',IMPORT:'#a78bfa'};
 let feats=[],drawKind=null,pts=[];
+let currentCoordFormat = 'latlon';
 
 const map=new maplibregl.Map({
   container:'map',center:FANG,zoom:11,maxPitch:80,
@@ -154,11 +165,39 @@ document.getElementById('t3d').onchange=e=>{
 document.getElementById('btn-flat').onclick=()=>map.easeTo({pitch:0,bearing:0});
 document.getElementById('btn-fang').onclick=()=>map.flyTo({center:FANG,zoom:11});
 
-// coordinates + elevation
+// เปลี่ยนรูปแบบพิกัดจาก Dropdown
+document.getElementById('coord-format').onchange = (e) => {
+  currentCoordFormat = e.target.value;
+};
+
+// coordinates + elevation + dynamic coordinate formats
+proj4.defs("EPSG:32647","+proj=utm +zone=47 +datum=WGS84 +units=m +no_defs");
+
 map.on('mousemove',e=>{
-  const el=map.getTerrain()?map.queryTerrainElevation(e.lngLat):null;
-  document.getElementById('status').textContent=
-    e.lngLat.lat.toFixed(5)+'° N, '+e.lngLat.lng.toFixed(5)+'° E'+(el!=null?'  |  สูง '+Math.round(el)+' ม.':'');
+  const lng = e.lngLat.lng;
+  const lat = e.lngLat.lat;
+  const el = map.getTerrain() ? map.queryTerrainElevation(e.lngLat) : null;
+  
+  let coordText = '';
+  if (currentCoordFormat === 'latlon') {
+    coordText = `${lat.toFixed(5)}° N, ${lng.toFixed(5)}° E`;
+  } else if (currentCoordFormat === 'mgrs') {
+    try {
+      coordText = mgrs.forward([lng, lat]);
+    } catch (err) {
+      coordText = 'Out of bounds';
+    }
+  } else if (currentCoordFormat === 'utm') {
+    try {
+      const utmCoord = proj4("EPSG:4326", "EPSG:32647", [lng, lat]);
+      coordText = `E ${Math.round(utmCoord[0])}, N ${Math.round(utmCoord[1])} (Zone 47N)`;
+    } catch (err) {
+      coordText = 'UTM Error';
+    }
+  }
+
+  document.getElementById('status').textContent =
+    coordText + (el != null ? '  |  สูง ' + Math.round(el) + ' ม.' : '');
 });
 
 // ---------- data handling ----------
@@ -191,7 +230,6 @@ function xmlToGeo(txt,ext){
         const c=num(n.textContent);if(!c.length)return;
         out.push({type:'Feature',properties:{name},geometry:g(c)});
       });
-      const seen=new Set();
       pm.querySelectorAll('Point coordinates').forEach(n=>{const c=num(n.textContent);if(c.length)out.push({type:'Feature',properties:{name},geometry:{type:'Point',coordinates:c[0]}});});
       pm.querySelectorAll('LineString coordinates').forEach(n=>{const c=num(n.textContent);if(c.length>1)out.push({type:'Feature',properties:{name},geometry:{type:'LineString',coordinates:c}});});
       pm.querySelectorAll('Polygon outerBoundaryIs coordinates').forEach(n=>{const c=num(n.textContent);if(c.length>2)out.push({type:'Feature',properties:{name},geometry:{type:'Polygon',coordinates:[c]}});});
