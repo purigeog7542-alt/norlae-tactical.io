@@ -57,6 +57,13 @@ input[type=file]{display:none}
 <label><input type="radio" name="bm" value="sat"> ดาวเทียม (Esri)</label>
 <label><input type="radio" name="bm" value="osm"> ถนน (OSM)</label>
 
+<h2>แผนที่ทหารซ้อนทับ</h2>
+<label><input type="checkbox" id="toggle-overlay"> เปิดแผนที่ทหารซ้อนทับ</label>
+<div style="margin:4px 0 10px 0;">
+  <label style="font-size:11px;color:#9ca3af;">ความโปร่งใส: <span id="opacity-val">80</span>%</label>
+  <input type="range" id="overlay-opacity" min="0" max="1" step="0.05" value="0.8" style="width:100%;">
+</div>
+
 <h2>ภูมิประเทศ</h2>
 <label><input type="checkbox" id="hill" checked> เงาภูเขา (Hillshade)</label>
 <label><input type="checkbox" id="t3d"> มุมมอง 3 มิติ</label>
@@ -139,11 +146,35 @@ const map=new maplibregl.Map({
     ]}
 });
 map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),'top-right');
-map.addControl(new maplibregl.ScaleControl({unit:'metric'}));
+mainScaleControl = new maplibregl.ScaleControl({unit:'metric'});
+map.addControl(mainScaleControl);
+
+// กำหนดพิกัดมุมทั้ง 4 ของภาพแผนที่ทหารซ้อนทับ [Lng, Lat] (สามารถปรับเปลี่ยนค่าพิกัดมุมขอบระวางจริงได้ที่นี่)
+const overlayCoordinates = [
+    [99.10, 20.05], // 1. มุมบนซ้าย (Top-Left)
+    [99.35, 20.05], // 2. มุมบนขวา (Top-Right)
+    [99.35, 19.80], // 3. มุมล่างขวา (Bottom-Right)
+    [99.10, 19.80]  // 4. มุมล่างซ้าย (Bottom-Left)
+];
 
 map.on('load',()=>{
   map.addSource('user',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
   map.addSource('draft',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+  
+  // เพิ่ม Source และ Layer สำหรับภาพแผนที่ทหารซ้อนทับ
+  map.addSource('tactical-overlay',{
+    type:'image',
+    url:'images/tactical-map.jpg', // เปลี่ยน Path รูปภาพตามที่คุณจัดเก็บไว้
+    coordinates: overlayCoordinates
+  });
+  map.addLayer({
+    id:'tactical-overlay-layer',
+    type:'raster',
+    source:'tactical-overlay',
+    layout:{'visibility':'none'},
+    paint:{'raster-opacity':0.8}
+  });
+
   const c=['match',['get','kind'],'AO',colors.AO,'NAI',colors.NAI,'TAI',colors.TAI,'ROUTE',colors.ROUTE,colors.IMPORT];
   map.addLayer({id:'u-fill',type:'fill',source:'user',filter:['==',['geometry-type'],'Polygon'],paint:{'fill-color':c,'fill-opacity':.2}});
   map.addLayer({id:'u-line',type:'line',source:'user',filter:['!=',['geometry-type'],'Point'],paint:{'line-color':c,'line-width':3}});
@@ -152,6 +183,17 @@ map.on('load',()=>{
   map.addLayer({id:'d-line',type:'line',source:'draft',paint:{'line-color':'#fff','line-width':2,'line-dasharray':[2,2]}});
   map.addLayer({id:'d-pt',type:'circle',source:'draft',filter:['==',['geometry-type'],'Point'],paint:{'circle-color':'#fff','circle-radius':4}});
 });
+
+// ควบคุมการเปิด-ปิด และปรับความโปร่งใสของภาพแผนที่ทหารซ้อนทับ
+document.getElementById('toggle-overlay').onchange = (e) => {
+  const visibility = e.target.checked ? 'visible' : 'none';
+  map.setLayoutProperty('tactical-overlay-layer', 'visibility', visibility);
+};
+document.getElementById('overlay-opacity').oninput = (e) => {
+  const val = parseFloat(e.target.value);
+  map.setPaintProperty('tactical-overlay-layer', 'raster-opacity', val);
+  document.getElementById('opacity-val').textContent = Math.round(val * 100);
+};
 
 // basemap + terrain controls
 document.querySelectorAll('input[name=bm]').forEach(r=>r.onchange=()=>{
